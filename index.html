@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Inventario para Encargo</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #4f8ef7;
+    --accent2: #7c6af7;
+    --ok: #22c55e;
+    --faltante: #ef4444;
+    --sobrante: #f59e0b;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 0 0 80px; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .logo-block { }
+  .logo-title { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 0.04em; line-height: 1.2; }
+  .logo-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .fecha-badge { font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--surface2); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); white-space: nowrap; }
+
+  .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .tab { flex: 1; min-width: 90px; padding: 12px 8px; text-align: center; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  main { padding: 20px; max-width: 600px; margin: 0 auto; }
+
+  .section-title { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  .field input, .field select { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; color: var(--text); font-family: var(--sans); font-size: 15px; outline: none; transition: border-color 0.2s; }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field input[type=number] { font-family: var(--mono); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .pikera-helper { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 8px; }
+  .pikera-helper .helper-title { font-size: 11px; color: var(--accent2); font-weight: 600; margin-bottom: 10px; font-family: var(--mono); }
+  .pikera-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .pikera-inputs input { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; width: 100%; text-align: center; }
+  .pikera-inputs input:focus { border-color: var(--accent2); }
+  .pikera-inputs label { display: block; font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 4px; }
+  .pikera-total { margin-top: 10px; text-align: center; font-family: var(--mono); font-size: 13px; color: var(--accent2); }
+
+  .resultado { border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid; display: none; }
+  .resultado.ok { background: #052e16; border-color: #166534; }
+  .resultado.faltante { background: #1c0505; border-color: #7f1d1d; }
+  .resultado.sobrante { background: #1c1205; border-color: #78350f; }
+  .resultado-badge { display: inline-block; font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; margin-bottom: 12px; letter-spacing: 0.1em; }
+  .ok .resultado-badge { background: #166534; color: #86efac; }
+  .faltante .resultado-badge { background: #7f1d1d; color: #fca5a5; }
+  .sobrante .resultado-badge { background: #78350f; color: #fcd34d; }
+  .resultado-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .res-item .res-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .res-item .res-val { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+  .ok .res-val.main { color: var(--ok); }
+  .faltante .res-val.main { color: var(--faltante); }
+  .sobrante .res-val.main { color: var(--sobrante); }
+  .resultado-obs { font-size: 12px; color: var(--muted); background: rgba(0,0,0,0.2); border-radius: 6px; padding: 10px; line-height: 1.5; }
+
+  .btn { width: 100%; padding: 14px; border-radius: 10px; border: none; font-family: var(--sans); font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #3b7ef5; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); margin-top: 10px; }
+  .btn-green { background: #166534; color: #86efac; border: 1px solid #166534; margin-bottom: 10px; }
+  .btn-export { background: var(--surface2); color: var(--accent); border: 1px solid var(--accent); margin-bottom: 10px; }
+
+  .historial-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .historial-left { flex: 1; min-width: 0; }
+  .historial-producto { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .historial-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--mono); }
+  .historial-right { text-align: right; flex-shrink: 0; }
+  .historial-diff { font-family: var(--mono); font-size: 16px; font-weight: 700; }
+  .historial-estado { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; margin-top: 2px; }
+  .color-ok { color: var(--ok); }
+  .color-faltante { color: var(--faltante); }
+  .color-sobrante { color: var(--sobrante); }
+  .color-pendiente { color: var(--muted); }
+
+  .resumen-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .resumen-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .resumen-num { font-family: var(--mono); font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .resumen-label { font-size: 11px; color: var(--muted); }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+  .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+
+  .delete-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 4px; border-radius: 4px; transition: color 0.2s; }
+  .delete-btn:hover { color: var(--faltante); }
+  .edit-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 4px; border-radius: 4px; transition: color 0.2s; }
+  .edit-btn:hover { color: var(--accent); }
+  .historial-nota { font-size: 11px; color: var(--muted); margin-top: 4px; font-style: italic; line-height: 1.4; }
+  .historial-monto { font-size: 12px; font-weight: 600; margin-top: 3px; font-family: var(--mono); }
+  .monto-faltante { border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-family: var(--mono); font-size: 15px; font-weight: 700; text-align: center; background: rgba(0,0,0,0.2); }
+
+  /* PIKERA FILAS */
+  .pikera-fila { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .pikera-fila input { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; width: 100%; text-align: center; }
+  .pikera-fila input:focus { border-color: var(--accent2); }
+  .pikera-fila label { font-size: 10px; color: var(--muted); text-align: center; display: block; margin-bottom: 3px; }
+  .pikera-fila-subtotal { font-family: var(--mono); font-size: 12px; color: var(--accent2); text-align: center; min-width: 50px; }
+  .pikera-fila-headers { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 4px; }
+  .pikera-fila-headers span { font-size: 10px; color: var(--muted); text-align: center; font-family: var(--mono); }
+  .btn-add-fila { background: none; border: 1px dashed var(--accent2); color: var(--accent2); border-radius: 6px; padding: 7px; font-size: 12px; width: 100%; cursor: pointer; margin: 4px 0 12px; transition: all 0.2s; font-family: var(--sans); }
+  .btn-add-fila:hover { background: rgba(124,106,247,0.1); }
+  .pikera-sueltos-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .pikera-sueltos-row label { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+  .pikera-sueltos-row input { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none; width: 100px; text-align: center; }
+  .pikera-sueltos-row input:focus { border-color: var(--accent2); }
+
+  /* IMPORTAR EXCEL */
+  .import-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 14px; }
+  .import-zone:hover { border-color: var(--accent); }
+  .import-zone input[type=file] { display: none; }
+  .import-zone .import-icon { font-size: 28px; margin-bottom: 8px; }
+  .import-zone .import-text { font-size: 13px; color: var(--muted); }
+  .import-zone .import-hint { font-size: 11px; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+  .import-result { font-size: 12px; color: var(--ok); background: #052e16; border: 1px solid #166534; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: none; }
+  .import-error { font-size: 12px; color: var(--faltante); background: #1c0505; border: 1px solid #7f1d1d; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: none; }
+
+  .template-hint { font-size: 11px; color: var(--muted); background: var(--surface2); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; line-height: 1.6; }
+  .template-hint code { color: var(--accent2); font-family: var(--mono); font-size: 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-block">
+    <div class="logo-title">CONTROL DE INVENTARIO</div>
+    <div class="logo-sub">para Encargo · Supermarket23</div>
+  </div>
+  <div class="fecha-badge" id="fechaHoy"></div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('auditar')">Control Inv.</div>
+  <div class="tab" onclick="showTab('historial')">Historial</div>
+  <div class="tab" onclick="showTab('resumen')">Resumen</div>
+  <div class="tab" onclick="showTab('productos')">Productos</div>
+</div>
+
+<!-- TAB: AUDITAR -->
+<main id="tab-auditar">
+  <br>
+  <p class="section-title">Seleccionar producto</p>
+  <div class="card">
+    <div class="field">
+      <label>Selecciona de la lista</label>
+      <select id="producto-select" onchange="seleccionarDesdeDropdown()">
+        <option value="">— Elige un producto —</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>O escribe código / nombre</label>
+      <input type="text" id="producto" placeholder="Ej: ATN-001 · Atún en lata" oninput="buscarProducto()">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label>Suministrador</label>
+      <input type="text" id="categoria" placeholder="Ej: Distribuidora Norte" readonly style="opacity:0.7; cursor:default">
+    </div>
+  </div>
+
+  <p class="section-title">Datos del sistema</p>
+  <div class="card">
+    <div class="field-row">
+      <div class="field">
+        <label>Entradas (facturas)</label>
+        <input type="number" id="entradas" placeholder="0" oninput="calcularPikera()">
+      </div>
+      <div class="field">
+        <label>Ventas en TKC</label>
+        <input type="number" id="ventas" placeholder="0" oninput="calcularPikera()">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Merma</label>
+        <input type="number" id="merma" placeholder="0" oninput="autoGuardarCampo()">
+      </div>
+      <div class="field">
+        <label>Transferencia</label>
+        <input type="number" id="transferencia" placeholder="0" oninput="autoGuardarCampo()">
+      </div>
+    </div>
+  </div>
+
+  <p class="section-title">Pikera — inventario en tránsito</p>
+  <div class="card">
+    <div class="pikera-helper">
+      <div class="helper-title">CALCULADORA DE PIKERA</div>
+      <div id="pikera-filas"></div>
+      <button class="btn-add-fila" onclick="agregarFilaPikera()">+ Agregar tipo de caja</button>
+      <div class="pikera-sueltos-row">
+        <label>Unidades sueltas</label>
+        <input type="number" id="p_sueltos" placeholder="0" oninput="calcularPikera()">
+      </div>
+      <div class="pikera-total" id="pikera-total">Total pikera: 0</div>
+    </div>
+    <div class="field" style="margin-top:12px; margin-bottom:0">
+      <label>O ingresa total pikera directamente</label>
+      <input type="number" id="pikera" placeholder="0" oninput="syncPikera()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;color:var(--text);font-family:var(--mono);font-size:15px;outline:none;width:100%">
+    </div>
+  </div>
+
+
+  <p class="section-title">Tu conteo físico</p>
+  <div class="card">
+    <div class="field">
+      <label>Unidades contadas en almacén</label>
+      <input type="number" id="fisico" placeholder="0" oninput="autoGuardarCampo()">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label>Notas del proceso</label>
+      <textarea id="notas" placeholder="Ej: Caja abierta en mal estado, diferencia posible por rotura..." oninput="autoGuardarCampo()" rows="3" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;color:var(--text);font-family:var(--sans);font-size:14px;outline:none;resize:vertical;transition:border-color 0.2s"></textarea>
+    </div>
+  </div>
+
+  <p class="section-title">Precio de venta</p>
+  <div class="card">
+    <div class="field" style="margin-bottom:0">
+      <label>Precio unitario de venta</label>
+      <input type="number" id="precio" placeholder="0.00" step="0.01" oninput="autoGuardarCampo()">
+    </div>
+  </div>
+
+  <button class="btn btn-primary" onclick="calcular()">CONTROLAR</button>
+  <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;font-family:var(--mono)">Los datos se guardan automáticamente</p>
+
+  <div class="resultado" id="resultado">
+    <div class="resultado-badge" id="res-badge"></div>
+    <div class="resultado-grid">
+      <div class="res-item">
+        <div class="res-label">Stock esperado</div>
+        <div class="res-val" id="res-esperado"></div>
+      </div>
+      <div class="res-item">
+        <div class="res-label">Stock físico</div>
+        <div class="res-val" id="res-fisico"></div>
+      </div>
+      <div class="res-item">
+        <div class="res-label">Diferencia</div>
+        <div class="res-val main" id="res-dif"></div>
+      </div>
+      <div class="res-item">
+        <div class="res-label">Pikera</div>
+        <div class="res-val" id="res-pikera"></div>
+      </div>
+      <div class="res-item">
+        <div class="res-label">Merma</div>
+        <div class="res-val" id="res-merma"></div>
+      </div>
+      <div class="res-item">
+        <div class="res-label">Transferencia</div>
+        <div class="res-val" id="res-transferencia"></div>
+      </div>
+    </div>
+    <div class="resultado-obs" id="res-obs"></div>
+    <div class="monto-faltante" id="res-monto" style="display:none"></div>
+    <button id="guardar-btn" class="btn btn-secondary" onclick="guardarRegistro()">IR AL HISTORIAL</button>
+  </div>
+</main>
+
+<!-- TAB: HISTORIAL -->
+<main id="tab-historial" style="display:none">
+  <br>
+  <button class="btn btn-export" onclick="exportarExcel()">EXPORTAR HISTORIAL EN EXCEL</button>
+  <button class="btn btn-secondary" style="margin-bottom:16px" onclick="confirmarLimpiarHistorial()">LIMPIAR HISTORIAL</button>
+  <p class="section-title">Registros guardados</p>
+  <div id="historial-lista">
+    <div class="empty-state">
+      <div class="icon">📋</div>
+      Aún no hay registros.<br>Audita un producto y guárdalo.
+    </div>
+  </div>
+</main>
+
+<!-- TAB: RESUMEN -->
+<main id="tab-resumen" style="display:none">
+  <br>
+  <p class="section-title">Resumen del día</p>
+  <div class="resumen-grid">
+    <div class="resumen-card">
+      <div class="resumen-num" id="sum-total">0</div>
+      <div class="resumen-label">Auditados</div>
+    </div>
+    <div class="resumen-card">
+      <div class="resumen-num color-ok" id="sum-ok">0</div>
+      <div class="resumen-label">OK</div>
+    </div>
+    <div class="resumen-card">
+      <div class="resumen-num color-faltante" id="sum-faltante">0</div>
+      <div class="resumen-label">Faltantes</div>
+    </div>
+    <div class="resumen-card">
+      <div class="resumen-num color-sobrante" id="sum-sobrante">0</div>
+      <div class="resumen-label">Sobrantes</div>
+    </div>
+    <div class="resumen-card" style="grid-column:span 2">
+      <div class="resumen-num color-faltante" id="sum-monto" style="font-size:20px">0.00</div>
+      <div class="resumen-label">Monto total en faltantes</div>
+    </div>
+  </div>
+  <p class="section-title">Productos con alerta</p>
+  <div id="criticos-lista">
+    <div class="empty-state">
+      <div class="icon">✅</div>
+      Sin alertas por ahora.
+    </div>
+  </div>
+</main>
+
+<!-- TAB: PRODUCTOS -->
+<main id="tab-productos" style="display:none">
+  <br>
+
+  <!-- IMPORTAR DESDE EXCEL -->
+  <p class="section-title">Importar desde Excel</p>
+  <div class="card">
+    <div class="template-hint">
+      Tu Excel debe tener estas columnas (fila 1 = encabezados):<br>
+      <code>Codigo</code> &nbsp;|&nbsp; <code>Nombre</code> &nbsp;|&nbsp; <code>Suministrador</code>
+    </div>
+    <label for="fileInput" class="import-zone">
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="importarExcel(event)">
+      <div class="import-icon">📂</div>
+      <div class="import-text">Toca aquí para seleccionar tu archivo Excel</div>
+      <div class="import-hint">.xlsx · .xls · .csv</div>
+    </label>
+    <div class="import-result" id="import-result"></div>
+    <div class="import-error" id="import-error"></div>
+    <button class="btn btn-green" onclick="descargarPlantilla()">DESCARGAR PLANTILLA DE EJEMPLO</button>
+  </div>
+
+  <!-- AGREGAR MANUAL -->
+  <p class="section-title">Agregar manualmente</p>
+  <div class="card">
+    <div class="field">
+      <label>Código</label>
+      <input type="text" id="np-codigo" placeholder="Ej: ATN-001">
+    </div>
+    <div class="field">
+      <label>Nombre</label>
+      <input type="text" id="np-nombre" placeholder="Ej: Atún en lata">
+    </div>
+    <div class="field">
+      <label>Suministrador</label>
+      <input type="text" id="np-categoria" placeholder="Ej: Distribuidora Norte">
+    </div>
+    <button class="btn btn-primary" onclick="agregarProducto()">AGREGAR PRODUCTO</button>
+  </div>
+
+  <p class="section-title">Productos registrados (<span id="count-productos">0</span>)</p>
+  <div id="productos-lista">
+    <div class="empty-state">
+      <div class="icon">📦</div>
+      Importa un Excel o agrega productos manualmente.
+    </div>
+  </div>
+</main>
+
+<script>
+// ─── ESTADO ──────────────────────────────────────────────────────
+let historial = JSON.parse(localStorage.getItem('cie_historial') || '[]');
+let productos = JSON.parse(localStorage.getItem('cie_productos') || '[]');
+
+
+
+const hoy = new Date();
+document.getElementById('fechaHoy').textContent =
+  hoy.toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' });
+
+// ─── TABS ────────────────────────────────────────────────────────
+function showTab(tab) {
+  ['auditar','historial','resumen','productos'].forEach(t => {
+    document.getElementById('tab-'+t).style.display = 'none';
+  });
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-'+tab).style.display = 'block';
+  const idx = ['auditar','historial','resumen','productos'].indexOf(tab);
+  document.querySelectorAll('.tab')[idx].classList.add('active');
+  if (tab === 'historial') renderHistorial();
+  if (tab === 'resumen') renderResumen();
+  if (tab === 'productos') renderProductos();
+  if (tab === 'auditar') { renderDropdown(); }
+}
+
+// ─── DROPDOWN ────────────────────────────────────────────────────
+function renderDropdown() {
+  const sel = document.getElementById('producto-select');
+  if (!sel) return;
+  const val = sel.value;
+  sel.innerHTML = '<option value="">— Elige un producto —</option>';
+  productos.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.codigo;
+    opt.textContent = `${p.codigo} · ${p.nombre}`;
+    sel.appendChild(opt);
+  });
+  if (val) sel.value = val;
+}
+renderDropdown();
+
+function seleccionarDesdeDropdown() {
+  const codigo = document.getElementById('producto-select').value;
+  if (!codigo) return;
+  const p = productos.find(x => x.codigo === codigo);
+  if (!p) return;
+
+  // Limpiar todos los campos primero
+  ['entradas','ventas','merma','transferencia','p_sueltos','pikera','fisico','precio'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  pikeraFilas = []; renderFilasPikera();
+  document.getElementById('pikera-total').textContent = 'Total pikera: 0';
+  document.getElementById('resultado').style.display = 'none';
+  editandoId = null;
+
+  // Cargar producto seleccionado
+  document.getElementById('producto').value = `${p.codigo} · ${p.nombre}`;
+  document.getElementById('categoria').value = p.categoria;
+  calcularPikera();
+}
+
+function seleccionarProducto(codigo) {
+  const p = productos.find(x => x.codigo === codigo);
+  if (!p) return;
+  document.getElementById('producto').value = `${p.codigo} · ${p.nombre}`;
+  document.getElementById('categoria').value = p.categoria;
+  calcularPikera();
+}
+
+function buscarProducto() {
+  const q = document.getElementById('producto').value.toLowerCase();
+  const p = productos.find(x =>
+    x.codigo.toLowerCase().includes(q) || x.nombre.toLowerCase().includes(q)
+  );
+  if (p) {
+    document.getElementById('categoria').value = p.categoria;
+    }
+}
+
+// ─── PIKERA ──────────────────────────────────────────────────────
+let pikeraFilas = [];
+
+function agregarFilaPikera() {
+  const id = Date.now();
+  pikeraFilas.push({ id, cajas: 0, pxc: 0 });
+  renderFilasPikera();
+}
+
+function renderFilasPikera() {
+  const container = document.getElementById('pikera-filas');
+  if (pikeraFilas.length === 0) {
+    container.innerHTML = '';
+    calcularPikera();
+    return;
+  }
+  container.innerHTML = `
+    <div class="pikera-fila-headers">
+      <span>Cajas</span><span>Unid. x caja</span><span>= Subtotal</span>
+    </div>
+  ` + pikeraFilas.map((f, i) => `
+    <div class="pikera-fila">
+      <div>
+        <input type="number" placeholder="0" value="${f.cajas || ''}"
+          oninput="pikeraFilas[${i}].cajas = parseFloat(this.value)||0; calcularPikera()">
+      </div>
+      <div>
+        <input type="number" placeholder="0" value="${f.pxc || ''}"
+          oninput="pikeraFilas[${i}].pxc = parseFloat(this.value)||0; calcularPikera()">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="pikera-fila-subtotal" id="sub-${f.id}">${(f.cajas||0)*(f.pxc||0)}</span>
+        <button class="delete-btn" onclick="eliminarFilaPikera(${i})">✕</button>
+      </div>
+    </div>
+  `).join('');
+  calcularPikera();
+}
+
+function eliminarFilaPikera(i) {
+  pikeraFilas.splice(i, 1);
+  renderFilasPikera();
+}
+
+function calcularPikera() {
+  const sueltos = parseFloat(document.getElementById('p_sueltos').value) || 0;
+  const totalCajas = pikeraFilas.reduce((sum, f) => sum + (f.cajas||0) * (f.pxc||0), 0);
+  const total = totalCajas + sueltos;
+  // update subtotals
+  pikeraFilas.forEach(f => {
+    const el = document.getElementById(`sub-${f.id}`);
+    if (el) el.textContent = (f.cajas||0)*(f.pxc||0);
+  });
+  document.getElementById('pikera-total').textContent = `Total pikera: ${total}`;
+  document.getElementById('pikera').value = total || '';
+}
+
+function syncPikera() {
+  pikeraFilas = [];
+  renderFilasPikera();
+  document.getElementById('p_sueltos').value = '';
+  document.getElementById('pikera-total').textContent = 'Total pikera: —';
+}
+
+// ─── CALCULAR ────────────────────────────────────────────────────
+function recopilarDatos() {
+  const producto      = document.getElementById('producto').value.trim();
+  const categoria     = document.getElementById('categoria').value.trim();
+  const entradas      = parseFloat(document.getElementById('entradas').value)      || 0;
+  const ventas        = parseFloat(document.getElementById('ventas').value)        || 0;
+  const merma         = parseFloat(document.getElementById('merma').value)         || 0;
+  const transferencia = parseFloat(document.getElementById('transferencia').value) || 0;
+  const pikera        = parseFloat(document.getElementById('pikera').value)        || 0;
+  const p_sueltos     = parseFloat(document.getElementById('p_sueltos').value)     || 0;
+  const notas         = document.getElementById('notas') ? document.getElementById('notas').value.trim() : '';
+  const precio        = parseFloat(document.getElementById('precio') ? document.getElementById('precio').value : 0) || 0;
+  const fisicoRaw     = document.getElementById('fisico').value;
+  const fisico        = fisicoRaw !== '' ? parseFloat(fisicoRaw) : '';
+
+  const tieneFisico = fisico !== '' && !isNaN(fisico);
+  const esperado    = tieneFisico ? entradas - ventas - pikera - merma - transferencia : '';
+  const diferencia  = tieneFisico ? fisico - esperado : '';
+
+  let estado = 'PENDIENTE';
+  if (tieneFisico) {
+    if (diferencia === 0) estado = 'OK';
+    else if (diferencia < 0) estado = 'FALTANTE';
+    else estado = 'SOBRANTE';
+  }
+
+  return { producto, categoria, entradas, ventas, merma, transferencia,
+           pikera, p_sueltos, pikeraFilas: [...pikeraFilas],
+           fisico, esperado, diferencia, estado, notas, precio, fecha: hoy.toLocaleDateString('es') };
+}
+
+function calcular() {
+  const producto = document.getElementById('producto').value.trim();
+  if (!producto) { alert('Ingresa el nombre o código del producto.'); return; }
+
+  const d = recopilarDatos();
+  const tieneFisico = d.fisico !== '' && !isNaN(d.fisico);
+
+  if (tieneFisico) {
+    let clase, obs;
+    if (d.diferencia === 0) {
+      clase = 'ok'; obs = 'El inventario cuadra perfectamente.';
+    } else if (d.diferencia < 0) {
+      clase = 'faltante';
+      obs = `Faltan ${Math.abs(d.diferencia)} unidades. Verifica: (1) Conteo de pikera — ¿están bien contadas las cajas? (2) ¿Hay devoluciones sin registrar en TKC? (3) ¿La entrada de ${d.entradas} está respaldada por factura?`;
+    } else {
+      clase = 'sobrante';
+      obs = `Sobran ${d.diferencia} unidades. Verifica: (1) ¿Hay entradas sin registrar? (2) ¿El conteo físico incluyó mercancía de otro lote?`;
+    }
+    const res = document.getElementById('resultado');
+    res.className = 'resultado ' + clase;
+    res.style.display = 'block';
+    document.getElementById('res-badge').textContent = d.estado;
+    document.getElementById('res-esperado').textContent = d.esperado;
+    document.getElementById('res-fisico').textContent = d.fisico;
+    document.getElementById('res-dif').textContent = (d.diferencia >= 0 ? '+' : '') + d.diferencia;
+    document.getElementById('res-pikera').textContent = d.pikera;
+    document.getElementById('res-merma').textContent = d.merma;
+    document.getElementById('res-transferencia').textContent = d.transferencia;
+    document.getElementById('res-obs').textContent = obs;
+
+    // Monto faltante/sobrante
+    const montoEl = document.getElementById('res-monto');
+    const precio = parseFloat(document.getElementById('precio').value) || 0;
+    if (precio > 0 && d.diferencia !== 0) {
+      const monto = Math.abs(d.diferencia) * precio;
+      const signo = d.diferencia < 0 ? 'MONTO FALTANTE' : 'MONTO SOBRANTE';
+      montoEl.style.display = 'block';
+      montoEl.textContent = `${signo}: ${monto.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      montoEl.className = d.diferencia < 0 ? 'monto-faltante color-faltante' : 'monto-faltante color-sobrante';
+    } else {
+      montoEl.style.display = 'none';
+    }
+
+    res.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    res.dataset.temp = JSON.stringify(d);
+  }
+
+  // Auto-guardar siempre que haya producto
+  autoGuardar(d);
+}
+
+// ─── AUTO-GUARDAR ─────────────────────────────────────────────────
+let editandoId = null;
+let autoGuardadoTimer = null;
+
+function autoGuardar(data) {
+  const producto = document.getElementById('producto').value.trim();
+  if (!producto) return;
+
+  if (editandoId !== null) {
+    const idx = historial.findIndex(r => r.id === editandoId);
+    if (idx !== -1) historial[idx] = { ...data, id: editandoId };
+  } else {
+    // Crear nuevo registro y asignar id de sesión
+    editandoId = Date.now();
+    historial.unshift({ ...data, id: editandoId });
+  }
+  localStorage.setItem('cie_historial', JSON.stringify(historial));
+  mostrarToast('Guardado automáticamente');
+}
+
+function autoGuardarCampo() {
+  clearTimeout(autoGuardadoTimer);
+  autoGuardadoTimer = setTimeout(() => {
+    const producto = document.getElementById('producto').value.trim();
+    if (!producto) return;
+    autoGuardar(recopilarDatos());
+  }, 800);
+}
+
+function mostrarToast(msg) {
+  let toast = document.getElementById('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e8449;color:#fff;padding:8px 18px;border-radius:20px;font-size:12px;font-family:var(--mono);z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  setTimeout(() => toast.style.opacity = '0', 1800);
+}
+
+function guardarRegistro() {
+  const producto = document.getElementById('producto').value.trim();
+  if (!producto) { alert('Ingresa el nombre o código del producto.'); return; }
+  const data = recopilarDatos();
+
+  if (editandoId !== null) {
+    const idx = historial.findIndex(r => r.id === editandoId);
+    if (idx !== -1) historial[idx] = { ...data, id: editandoId };
+  } else {
+    editandoId = Date.now();
+    historial.unshift({ ...data, id: editandoId });
+  }
+
+  localStorage.setItem('cie_historial', JSON.stringify(historial));
+  limpiarFormulario();
+  showTab('historial');
+}
+
+function editarRegistro(id) {
+  const r = historial.find(x => x.id === id);
+  if (!r) return;
+  editandoId = id;
+
+  // Cargar datos en el formulario
+  document.getElementById('producto').value = r.producto || '';
+  document.getElementById('categoria').value = r.categoria || '';
+  document.getElementById('entradas').value = r.entradas || '';
+  document.getElementById('ventas').value = r.ventas || '';
+  document.getElementById('merma').value = r.merma || '';
+  document.getElementById('transferencia').value = r.transferencia || '';
+  document.getElementById('p_sueltos').value = r.p_sueltos || '';
+  document.getElementById('pikera').value = r.pikera || '';
+  document.getElementById('fisico').value = r.fisico !== undefined ? r.fisico : '';
+  const notasEl = document.getElementById('notas'); if (notasEl) notasEl.value = r.notas || '';
+  const precioEl = document.getElementById('precio'); if (precioEl) precioEl.value = r.precio || '';
+
+  // Restaurar filas de pikera si existen
+  pikeraFilas = r.pikeraFilas || [];
+  renderFilasPikera();
+
+  // Sincronizar dropdown si el producto existe
+  const sel = document.getElementById('producto-select');
+  const prod = productos.find(p => r.producto && r.producto.includes(p.codigo));
+  if (sel && prod) sel.value = prod.codigo;
+
+  // Cambiar texto del botón
+  document.getElementById('guardar-btn').textContent = 'ACTUALIZAR REGISTRO';
+
+  // Recalcular para mostrar resultado actual
+  if (r.fisico !== undefined && r.fisico !== '') calcular();
+
+  showTab('auditar');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function limpiarFormulario() {
+  pikeraFilas = []; renderFilasPikera();
+  const notasEl = document.getElementById('notas'); if (notasEl) notasEl.value = '';
+  ['producto','categoria','entradas','ventas','merma','transferencia','p_sueltos','pikera','fisico','precio'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('pikera-total').textContent = 'Total pikera: 0';
+  document.getElementById('resultado').style.display = 'none';
+  editandoId = null;
+  const btn = document.getElementById('guardar-btn');
+  if (btn) btn.textContent = 'GUARDAR EN HISTORIAL';
+  const sel = document.getElementById('producto-select');
+  if (sel) sel.value = '';
+}
+
+// ─── HISTORIAL ───────────────────────────────────────────────────
+function renderHistorial() {
+  const el = document.getElementById('historial-lista');
+  if (historial.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📋</div>Aún no hay registros.<br>Audita un producto y guárdalo.</div>';
+    return;
+  }
+  el.innerHTML = historial.map(r => `
+    <div class="historial-item">
+      <div class="historial-left">
+        <div class="historial-producto">${r.producto}</div>
+        <div class="historial-meta">${r.fecha} · ${r.categoria || '—'} · Esp: ${r.esperado !== '' && r.esperado !== undefined ? r.esperado : '—'} · Fís: ${r.fisico !== '' && r.fisico !== undefined ? r.fisico : '—'} ${r.merma ? '· Merma: '+r.merma : ''} ${r.transferencia ? '· Transfer: '+r.transferencia : ''}</div>${r.precio && r.diferencia < 0 ? '<div class="historial-monto color-faltante">Monto faltante: '+(Math.abs(r.diferencia)*r.precio).toLocaleString('es',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>' : ''}${r.notas ? '<div class="historial-nota">📝 '+r.notas+'</div>' : ''}
+      </div>
+      <div class="historial-right">
+        <div class="historial-diff color-${(r.estado||'pendiente').toLowerCase()}">${r.diferencia !== '' && r.diferencia !== undefined ? (r.diferencia >= 0 ? '+' : '') + r.diferencia : '—'}</div>
+        <div class="historial-estado color-${(r.estado||'pendiente').toLowerCase()}">${r.estado || 'PENDIENTE'}</div>
+      </div>
+      <button class="edit-btn" onclick="editarRegistro(${r.id})">✏️</button>
+      <button class="delete-btn" onclick="eliminarRegistro(${r.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+function eliminarRegistro(id) {
+  historial = historial.filter(r => r.id !== id);
+  localStorage.setItem('cie_historial', JSON.stringify(historial));
+  renderHistorial(); renderResumen();
+}
+
+function confirmarLimpiarHistorial() {
+  historial = [];
+  localStorage.setItem('cie_historial', JSON.stringify(historial));
+  renderHistorial(); renderResumen();
+}
+
+// ─── RESUMEN ─────────────────────────────────────────────────────
+function renderResumen() {
+  const total    = historial.length;
+  const ok       = historial.filter(r => r.estado === 'OK').length;
+  const faltante = historial.filter(r => r.estado === 'FALTANTE').length;
+  const sobrante = historial.filter(r => r.estado === 'SOBRANTE').length;
+  const montoTotal = historial
+    .filter(r => r.estado === 'FALTANTE' && r.precio && r.diferencia)
+    .reduce((sum, r) => sum + Math.abs(r.diferencia) * r.precio, 0);
+
+  document.getElementById('sum-total').textContent    = total;
+  document.getElementById('sum-ok').textContent       = ok;
+  document.getElementById('sum-faltante').textContent = faltante;
+  document.getElementById('sum-sobrante').textContent = sobrante;
+  document.getElementById('sum-monto').textContent    = montoTotal.toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const criticos = historial.filter(r => r.estado !== 'OK');
+  const el = document.getElementById('criticos-lista');
+  if (criticos.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">✅</div>Sin alertas. Todo cuadra.</div>';
+  } else {
+    el.innerHTML = criticos.map(r => `
+      <div class="historial-item">
+        <div class="historial-left">
+          <div class="historial-producto">${r.producto}</div>
+          <div class="historial-meta">${r.fecha} · Esperado: ${r.esperado} · Físico: ${r.fisico}</div>
+        </div>
+        <div class="historial-right">
+          <div class="historial-diff color-${r.estado.toLowerCase()}">${r.diferencia >= 0 ? '+' : ''}${r.diferencia}</div>
+          <div class="historial-estado color-${r.estado.toLowerCase()}">${r.estado}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+// ─── EXPORTAR EXCEL ──────────────────────────────────────────────
+function exportarExcel() {
+  if (historial.length === 0) { alert('No hay registros para exportar.'); return; }
+
+  const headers = ['Fecha','Producto','Suministrador','Entradas','Ventas TKC','Pikera','Merma','Transferencia','Conteo Fisico','Stock Esperado','Diferencia','Estado','Precio Unitario','Monto Faltante','Notas'];
+  const rows = historial.map(r => [
+    r.fecha, r.producto, r.categoria || '',
+    r.entradas, r.ventas, r.pikera,
+    r.merma||0, r.transferencia||0,
+    r.fisico, r.esperado, r.diferencia, r.estado,
+    r.precio||0, (r.estado==='FALTANTE' && r.precio && r.diferencia ? Math.abs(r.diferencia)*r.precio : 0), r.notas||''
+  ]);
+
+  const wb = XLSX.utils.book_new();
+  const wsData = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Anchos de columna
+  ws['!cols'] = [12,30,20,12,12,10,10,12,14,14,12,12,14,14,30].map(w => ({ wch: w }));
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Historial');
+
+  const fecha = hoy.toISOString().slice(0,10);
+  XLSX.writeFile(wb, `historial_auditoria_${fecha}.xlsx`);
+}
+
+// ─── IMPORTAR EXCEL ──────────────────────────────────────────────
+function importarExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onerror = function() {
+    mostrarErrorImport('No se pudo leer el archivo. Intenta de nuevo.');
+  };
+
+  reader.onload = function(e) {
+    try {
+      let wb;
+      const nombre = file.name.toLowerCase();
+
+      if (nombre.endsWith('.csv')) {
+        // CSV: leer como texto
+        const texto = new TextDecoder('utf-8').decode(new Uint8Array(e.target.result));
+        wb = XLSX.read(texto, { type: 'string' });
+      } else {
+        // Excel: leer como array binario
+        wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      }
+
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+
+      if (!rows || rows.length === 0) {
+        mostrarErrorImport('El archivo está vacío o no tiene filas de datos.');
+        return;
+      }
+
+      const primera = rows[0];
+      const findCol = (opciones) => {
+        for (const op of opciones) {
+          const found = Object.keys(primera).find(k =>
+            k.toLowerCase().replace(/\s/g,'').includes(op)
+          );
+          if (found) return found;
+        }
+        return null;
+      };
+
+      const colCodigo    = findCol(['codigo','code','cod','id','ref']);
+      const colNombre    = findCol(['nombre','name','producto','descripcion','desc']);
+      const colCategoria = findCol(['suministrador','proveedor','categoria','category','supplier']);
+
+      if (!colCodigo || !colNombre) {
+        mostrarErrorImport(`Columnas no encontradas. Tu archivo tiene: ${Object.keys(primera).join(', ')}. Necesita "Codigo" y "Nombre".`);
+        return;
+      }
+
+      let importados = 0, duplicados = 0, vacios = 0;
+
+      rows.forEach(row => {
+        const codigo = String(row[colCodigo] || '').trim();
+        const nombre = String(row[colNombre] || '').trim();
+        if (!codigo || !nombre) { vacios++; return; }
+        if (productos.find(p => p.codigo === codigo)) { duplicados++; return; }
+        productos.push({
+          codigo,
+          nombre,
+          categoria: colCategoria ? String(row[colCategoria] || '').trim() : ''
+        });
+        importados++;
+      });
+
+      guardarProductos();
+      renderProductos();
+      renderDropdown();
+
+      document.getElementById('import-error').style.display = 'none';
+      const res = document.getElementById('import-result');
+      res.style.display = 'block';
+      res.textContent = `✅ ${importados} productos importados.${duplicados ? ' '+duplicados+' duplicados omitidos.' : ''}${vacios ? ' '+vacios+' filas vacías ignoradas.' : ''}`;
+      event.target.value = '';
+
+    } catch (err) {
+      mostrarErrorImport('Error al procesar el archivo: ' + err.message + '. Prueba descargando la plantilla y usando ese formato.');
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function mostrarErrorImport(msg) {
+  const el = document.getElementById('import-error');
+  el.style.display = 'block';
+  el.textContent = '⚠️ ' + msg;
+  document.getElementById('import-result').style.display = 'none';
+}
+
+// ─── PLANTILLA DE EJEMPLO ────────────────────────────────────────
+function descargarPlantilla() {
+  const wb = XLSX.utils.book_new();
+  const data = [
+    ['Codigo','Nombre','Suministrador'],
+    ['ATN-001','Atún en lata','Distribuidora Norte'],
+    ['ESP-001','Espaguetis Ada 500g','Pastas y Granos SA'],
+    ['ACE-001','Aceite Mazeite 1L','Aceites del Sur'],
+    ['ARZ-001','Arroz Diana 2kg','Granos y Semillas'],
+    ['DET-001','Detergente Ariel 1kg','Limpieza Total SA'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [14,28,16].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws, 'Productos');
+  XLSX.writeFile(wb, 'plantilla_productos.xlsx');
+}
+
+// ─── PRODUCTOS ───────────────────────────────────────────────────
+function agregarProducto() {
+  const codigo    = document.getElementById('np-codigo').value.trim();
+  const nombre    = document.getElementById('np-nombre').value.trim();
+  const categoria = document.getElementById('np-categoria').value.trim();
+  if (!codigo || !nombre) { alert('Ingresa código y nombre.'); return; }
+  if (productos.find(p => p.codigo === codigo)) { alert('Ese código ya existe.'); return; }
+  productos.push({ codigo, nombre, categoria, pxc: 0 });
+  guardarProductos();
+  ['np-codigo','np-nombre','np-categoria'].forEach(id => document.getElementById(id).value = '');
+  renderProductos();
+  renderDropdown();
+}
+
+function guardarProductos() {
+  localStorage.setItem('cie_productos', JSON.stringify(productos));
+}
+
+function renderProductos() {
+  document.getElementById('count-productos').textContent = productos.length;
+  const el = document.getElementById('productos-lista');
+  if (productos.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📦</div>Importa un Excel o agrega productos manualmente.</div>';
+    return;
+  }
+  el.innerHTML = productos.map((p) => `
+    <div class="historial-item">
+      <div class="historial-left">
+        <div class="historial-producto">${p.nombre}</div>
+        <div class="historial-meta">${p.codigo} · ${p.categoria || '—'}</div>
+      </div>
+      <button class="delete-btn" onclick="eliminarProducto('${p.codigo.replace(/'/g,"\\'")}')">✕</button>
+    </div>
+  `).join('');
+}
+
+function eliminarProducto(codigo) {
+  productos = productos.filter(p => p.codigo !== codigo);
+  guardarProductos();
+  renderProductos();
+  renderDropdown();
+}
+</script>
+</body>
+</html>
