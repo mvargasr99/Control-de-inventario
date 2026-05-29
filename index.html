@@ -5,20 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Control de Inventario para Encargo</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#1a73e8">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Control Inv.">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --surface2: #22263a;
-    --border: #2e3350;
-    --accent: #4f8ef7;
-    --accent2: #7c6af7;
+    --bg: #080e1a;
+    --surface: #0d1526;
+    --surface2: #132035;
+    --border: #1e3a5f;
+    --accent: #1a73e8;
+    --accent2: #4da3ff;
     --ok: #22c55e;
     --faltante: #ef4444;
     --sobrante: #f59e0b;
-    --text: #e8eaf0;
-    --muted: #6b7280;
+    --text: #dce8f8;
+    --muted: #5b7fa6;
     --mono: 'Space Mono', monospace;
     --sans: 'DM Sans', sans-serif;
   }
@@ -966,6 +971,56 @@ function eliminarProducto(codigo) {
   guardarProductos();
   renderProductos();
   renderDropdown();
+}
+</script>
+<script>
+// ─── SERVICE WORKER (OFFLINE) ─────────────────────────────────
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'cie-v1';
+    const URLS = [
+      self.location.pathname,
+      'https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap',
+      'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+    ];
+
+    self.addEventListener('install', e => {
+      e.waitUntil(
+        caches.open(CACHE).then(cache => cache.addAll(URLS)).catch(() => {})
+      );
+      self.skipWaiting();
+    });
+
+    self.addEventListener('activate', e => {
+      e.waitUntil(
+        caches.keys().then(keys =>
+          Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+        )
+      );
+      self.clients.claim();
+    });
+
+    self.addEventListener('fetch', e => {
+      e.respondWith(
+        caches.match(e.request).then(cached => {
+          if (cached) return cached;
+          return fetch(e.request).then(response => {
+            if (!response || response.status !== 200) return response;
+            const copy = response.clone();
+            caches.open(CACHE).then(cache => cache.put(e.request, copy));
+            return response;
+          }).catch(() => caches.match(e.request));
+        })
+      );
+    });
+  `;
+
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+
+  navigator.serviceWorker.register(swUrl, { scope: '/' })
+    .then(() => console.log('Service Worker registrado — modo offline activo'))
+    .catch(err => console.log('SW no disponible:', err));
 }
 </script>
 </body>
